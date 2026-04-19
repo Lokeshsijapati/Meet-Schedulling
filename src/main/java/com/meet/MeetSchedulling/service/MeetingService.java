@@ -4,12 +4,15 @@ import com.meet.MeetSchedulling.dto.MeetingRequestDTO;
 import com.meet.MeetSchedulling.entity.Meeting;
 import com.meet.MeetSchedulling.entity.Users;
 import com.meet.MeetSchedulling.entity.GoogleToken;
+import com.meet.MeetSchedulling.exception.SameDateTimeException;
 import com.meet.MeetSchedulling.repository.MeetingRepository;
 import com.meet.MeetSchedulling.repository.UserRepository;
 import com.meet.MeetSchedulling.repository.GoogleTokenRepository;
 import com.google.api.services.calendar.model.Event;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -18,6 +21,7 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MeetingService {
 
     private final MeetingRepository meetingRepository;
@@ -28,7 +32,7 @@ public class MeetingService {
 
     public String scheduleMeeting(MeetingRequestDTO request, String email) throws Exception {
 
-        // Create start & end time
+        // 1. Create start & end time
         LocalDateTime start = LocalDateTime.of(
                 request.getMeetingDate(),
                 request.getStartTime()
@@ -39,7 +43,7 @@ public class MeetingService {
                 request.getEndTime()
         );
 
-        // Validations
+        // 2. Validations
         if (start.isBefore(LocalDateTime.now())) {
             throw new RuntimeException("Cannot schedule meeting in past");
         }
@@ -52,10 +56,10 @@ public class MeetingService {
                 .existsByStartTimeLessThanAndEndTimeGreaterThan(end, start);
 
         if (conflict) {
-            throw new RuntimeException("Slot already booked");
+            throw new SameDateTimeException("Slot already booked");
         }
 
-        //  Fetch user & token
+        // 3. Fetch user & token
         Users user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
@@ -65,10 +69,12 @@ public class MeetingService {
         String accessToken = token.getAccessToken();
         Event event;
 
-        // ✅ Google event creation + refresh logic
+        // 4. Google event creation + refresh logic
         try {
             event = googleService.createGoogleEvent(request, accessToken);
         } catch (Exception e) {
+
+            log.warn("Access token expired, trying refresh...");
 
             if (token.getRefreshToken() != null) {
 
@@ -86,32 +92,24 @@ public class MeetingService {
 
         String meetLink = event.getHangoutLink();
 
-        // PROPER DATE FORMAT (THIS WILL WORK)
+        // 5. Format time
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern(
                 "dd MMM yyyy, hh:mm a",
                 Locale.ENGLISH
         );
 
-        String meetingTime = start.format(formatter);
-        String meetingEndTime = end.format(formatter);
+        String meetingStart = start.format(formatter);
+        String meetingEnd = end.format(formatter);
+        String fullTime = meetingStart + " - " + meetingEnd;
 
-        //  Combine clean time range
-        String fullTime = meetingTime + " - " + meetingEndTime;
-
-        //  Send email to user
+        // 6. Send ONE email (user + manager inside EmailService)
         emailService.sendMeetingEmail(
                 request.getUserEmail(),
                 meetLink,
                 fullTime
         );
 
-        emailService.sendMeetingEmail(
-                googleService.getManagerMail(),
-                meetLink,
-                fullTime
-        );
-
-        //  Save meeting
+        // 7. Save meeting
         Meeting meeting = new Meeting();
         meeting.setTitle(request.getTitle());
         meeting.setStartTime(start);
@@ -121,6 +119,8 @@ public class MeetingService {
         meeting.setManagerEmail(googleService.getManagerMail());
 
         meetingRepository.save(meeting);
+
+        log.info("Meeting scheduled successfully for {}", request.getUserEmail());
 
         return meetLink;
     }

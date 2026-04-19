@@ -1,38 +1,71 @@
 package com.meet.MeetSchedulling.service;
-
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import sendinblue.ApiClient;
+import sendinblue.Configuration;
+import sendinblue.auth.ApiKeyAuth;
+import sibApi.TransactionalEmailsApi;
+import sibModel.SendSmtpEmail;
+import sibModel.SendSmtpEmailSender;
+import sibModel.SendSmtpEmailTo;
 
+import java.util.List;
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    @Value("${brevo.api.key}")
+    private String apiKey;
 
-@Async
-public void sendMeetingEmail(String toEmail,
-                             String meetLink,
-                             String meetingTime) throws MessagingException {
+    @Value("${brevo.sender.email}")
+    private String senderEmail;
 
-    MimeMessage message = mailSender.createMimeMessage();
-    MimeMessageHelper helper = new MimeMessageHelper(message, true);
+    @Value("${brevo.sender.name}")
+    private String senderName;
 
-    helper.setTo(toEmail);
-    helper.setFrom("lokeshkr189@gmail.com");
-    helper.setSubject("Meeting Scheduled");
+    @Value("${manager.email}")
+    private String managerEmail;
 
-    String content = "<h3>Meeting Scheduled</h3>"
-            + "<p><b>Time:</b> " + meetingTime + "</p>"
-            + "<p><b>Link:</b> <a href='" + meetLink + "'>" + meetLink + "</a></p>";
+    @Async
+    public void sendMeetingEmail(String userEmail, String meetLink, String meetingTime) {
 
-    helper.setText(content, true);
+        try {
+            ApiClient client = Configuration.getDefaultApiClient();
+            ApiKeyAuth apiKeyAuth = (ApiKeyAuth) client.getAuthentication("api-key");
+            apiKeyAuth.setApiKey(apiKey);
 
-    mailSender.send(message);
-}
+            TransactionalEmailsApi api = new TransactionalEmailsApi(client);
+
+            String content = "<h3>Meeting Scheduled</h3>"
+                    + "<p><b>Time:</b> " + meetingTime + "</p>"
+                    + "<p><b>Link:</b> <a href='" + meetLink + "'>" + meetLink + "</a></p>";
+
+            SendSmtpEmailSender sender = new SendSmtpEmailSender()
+                    .email(senderEmail)
+                    .name(senderName);
+
+            List<SendSmtpEmailTo> toList = List.of(
+                    new SendSmtpEmailTo().email(userEmail),
+                    new SendSmtpEmailTo().email(managerEmail)
+            );
+
+            SendSmtpEmail email = new SendSmtpEmail()
+                    .sender(sender)
+                    .to(toList)
+                    .subject("Meeting Scheduled")
+                    .htmlContent(content);
+
+            api.sendTransacEmail(email);
+
+            log.info("Mail sent to user: {} and manager: {}", userEmail, managerEmail);
+
+        } catch (Exception e) {
+            log.error("Email failed", e);
+            throw new RuntimeException("Email failed", e);
+        }
+    }
 }

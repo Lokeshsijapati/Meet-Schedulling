@@ -7,7 +7,7 @@ import com.google.api.client.util.DateTime;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.*;
 import com.meet.MeetSchedulling.dto.MeetingRequestDTO;
-
+import org.springframework.beans.factory.annotation.Value;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -21,59 +21,64 @@ import java.util.Arrays;
 @Setter 
 public class GoogleCalendarService {
 
-        private String ManagerMail = "cdrlokesh@gmail.com";
+    @Value("${manager.email}")
+    private String managerMail;
 
-        public Event createGoogleEvent(MeetingRequestDTO request, String accessToken) throws Exception {
-                GoogleCredential credential = new GoogleCredential()
-                                .setAccessToken(accessToken);
+    public Event createGoogleEvent(MeetingRequestDTO request, String accessToken) throws Exception {
 
-                Calendar service = new Calendar.Builder(
-                                new NetHttpTransport(),
-                                JacksonFactory.getDefaultInstance(),
-                                credential).setApplicationName("Meet Scheduler").build();
+        GoogleCredential credential = new GoogleCredential()
+                .setAccessToken(accessToken);
 
-                LocalDateTime startDateTime = LocalDateTime.of(
-                                request.getMeetingDate(),
-                                request.getStartTime());
+        Calendar service = new Calendar.Builder(
+                new NetHttpTransport(),
+                JacksonFactory.getDefaultInstance(),
+                credential)
+                .setApplicationName("Meet Scheduler")
+                .build();
 
-                LocalDateTime endDateTime = LocalDateTime.of(
-                                request.getMeetingDate(),
-                                request.getEndTime());
+        LocalDateTime startDateTime = LocalDateTime.of(
+                request.getMeetingDate(),
+                request.getStartTime());
 
-                DateTime start = new DateTime(startDateTime.toString() + ":00+05:30");
-                DateTime end = new DateTime(endDateTime.toString() + ":00+05:30");
+        LocalDateTime endDateTime = LocalDateTime.of(
+                request.getMeetingDate(),
+                request.getEndTime());
 
-                Event event = new Event()
-                                .setSummary(request.getTitle())
-                                .setDescription("Scheduled via Meet Scheduler");
+        DateTime start = new DateTime(startDateTime.toString() + ":00+05:30");
+        DateTime end = new DateTime(endDateTime.toString() + ":00+05:30");
 
-                event.setStart(new EventDateTime().setDateTime(start));
-                event.setEnd(new EventDateTime().setDateTime(end));
+        Event event = new Event()
+                .setSummary(request.getTitle())
+                .setDescription("Scheduled via Meet Scheduler");
 
-                EventAttendee user = new EventAttendee().setEmail(request.getUserEmail());
-                EventAttendee manager = new EventAttendee().setEmail(ManagerMail);
+        event.setStart(new EventDateTime().setDateTime(start));
+        event.setEnd(new EventDateTime().setDateTime(end));
 
-                event.setAttendees(Arrays.asList(user, manager));
+        EventAttendee user = new EventAttendee().setEmail(request.getUserEmail());
+        EventAttendee manager = new EventAttendee().setEmail(managerMail);
 
-                ConferenceData conferenceData = new ConferenceData();
-                CreateConferenceRequest confReq = new CreateConferenceRequest();
-                confReq.setRequestId("meet-" + System.currentTimeMillis());
+        event.setAttendees(Arrays.asList(user, manager));
 
-                conferenceData.setCreateRequest(confReq);
-                event.setConferenceData(conferenceData);
+        ConferenceData conferenceData = new ConferenceData();
+        CreateConferenceRequest confReq = new CreateConferenceRequest();
+        confReq.setRequestId("meet-" + System.currentTimeMillis());
 
-                return service.events()
-                                .insert("primary", event)
-                                .setConferenceDataVersion(1)
-                                .execute();
-        }
+        conferenceData.setCreateRequest(confReq);
+        event.setConferenceData(conferenceData);
+
+        return service.events()
+                .insert("primary", event)
+                .setConferenceDataVersion(1)
+                .execute();
+    }
+
 
         public String refreshAccessToken(String refreshToken) throws Exception {
 
                 String url = "https://oauth2.googleapis.com/token";
 
-                String params = "Client ID" +
-                                "Client Secret" +
+                String params = "" +
+                                "" +
                                 "&refresh_token=" + refreshToken +
                                 "&grant_type=refresh_token";
 
